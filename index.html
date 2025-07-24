@@ -142,6 +142,8 @@
         let currentOffset = 0;
         const widthPerMinute = 4;
 
+        channel.programs.sort((a, b) => a.startTime - b.startTime);
+
         channel.programs.slice(0, 10).forEach(program => {
           const progEl = document.createElement("div");
           progEl.className = "program";
