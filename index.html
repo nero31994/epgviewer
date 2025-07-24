@@ -2,177 +2,208 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>TV Guide EPG</title>
   <style>
     body {
-      margin: 0;
-      font-family: sans-serif;
-      background-color: #111;
+      font-family: Arial, sans-serif;
+      background: #121212;
       color: #fff;
+      margin: 0;
+      padding: 1rem;
     }
-
-    .epg-container {
+    h1 {
+      text-align: center;
+      margin-bottom: 1rem;
+    }
+    .epg-wrapper {
+      position: relative;
       overflow-x: auto;
-      overflow-y: hidden;
+    }
+    .epg-grid {
+      display: grid;
+      grid-template-columns: 200px 1fr;
+      gap: 1px;
+      position: relative;
+    }
+    .channel-name {
+      background: #1e1e1e;
+      padding: 10px;
+      font-weight: bold;
+      border-right: 1px solid #333;
+      color: #00bcd4;
+    }
+    .programs {
+      display: flex;
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      background: #1e1e1e;
+      position: relative;
+    }
+    .program {
+      flex: 0 0 auto;
+      min-width: 150px;
+      padding: 10px;
+      border-left: 1px solid #333;
       white-space: nowrap;
       position: relative;
-      padding-top: 50px;
     }
-
-    .timeline {
+    .now-playing {
+      background-color: #00bcd4;
+      color: #000;
+      font-weight: bold;
+      border-left: 4px solid yellow;
+    }
+    .time-indicator {
       position: absolute;
       top: 0;
-      left: 0;
-      height: 100%;
+      bottom: 0;
       width: 2px;
       background: red;
-      z-index: 100;
+      z-index: 10;
     }
-
-    .channel-row {
-      display: flex;
-      align-items: stretch;
-      margin-bottom: 5px;
-      height: 60px;
-    }
-
-    .channel-name {
-      width: 100px;
-      min-width: 100px;
-      background: #222;
+    .loading {
       text-align: center;
-      padding: 5px;
-      border-right: 1px solid #333;
-      font-size: 14px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .program {
-      background: #333;
-      margin-right: 1px;
-      padding: 5px;
-      font-size: 12px;
-      overflow: hidden;
-      white-space: nowrap;
-      text-overflow: ellipsis;
-      border-radius: 4px;
-      display: flex;
-      align-items: center;
-      height: 100%;
-    }
-
-    .now {
-      background-color: #ff5733;
-      color: #fff;
-      font-weight: bold;
-    }
-
-    @media (max-width: 768px) {
-      .channel-name {
-        font-size: 12px;
-        width: 80px;
-        min-width: 80px;
-      }
-
-      .program {
-        font-size: 11px;
-      }
-
-      .channel-row {
-        height: 50px;
-      }
+      margin-top: 2rem;
     }
   </style>
 </head>
 <body>
+  <h1>TV Guide EPG</h1>
+  <div class="epg-wrapper">
+    <div id="epgContainer" class="loading">Loading EPG...</div>
+    <div id="timeLine" class="time-indicator" style="display: none;"></div>
+  </div>
 
-<div id="epg" class="epg-container">
-  <div id="timeline" class="timeline"></div>
-</div>
+  <script>
+    let epgProgramsTimeMap = [];
 
-<script>
-  const epgUrl = 'https://epgnxb.vercel.app/api/epg.xml';
-  const container = document.getElementById('epg');
-  const timeline = document.getElementById('timeline');
-
-  function parseEPGDate(raw) {
-    const match = raw.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})\s*([+\-]\d{4})?/);
-    if (!match) return new Date(NaN);
-    const [_, y, m, d, h, min, s, tz] = match;
-    const iso = `${y}-${m}-${d}T${h}:${min}:${s}${tz ? tz.slice(0, 3) + ":" + tz.slice(3) : "Z"}`;
-    return new Date(iso);
-  }
-
-  function minutesBetween(start, end) {
-    return (end - start) / (1000 * 60);
-  }
-
-  async function loadEPG() {
-    container.innerHTML = '<div id="timeline" class="timeline"></div>'; // reset
-    const res = await fetch(epgUrl);
-    const xmlText = await res.text();
-    const parser = new DOMParser();
-    const xml = parser.parseFromString(xmlText, 'text/xml');
-
-    const now = new Date();
-    const guideStart = new Date(now.getTime() - 60 * 60 * 1000); // 1 hour before
-    const guideEnd = new Date(now.getTime() + 3 * 60 * 60 * 1000); // 3 hours after
-    const guideDuration = minutesBetween(guideStart, guideEnd);
-    const pxPerMin = 2; // scaling
-
-    const channels = [...xml.querySelectorAll('channel')];
-    for (const channel of channels) {
-      const id = channel.getAttribute('id');
-      const name = channel.querySelector('display-name')?.textContent || id;
-      const row = document.createElement('div');
-      row.className = 'channel-row';
-
-      const nameDiv = document.createElement('div');
-      nameDiv.className = 'channel-name';
-      nameDiv.textContent = name;
-      row.appendChild(nameDiv);
-
-      const programs = [...xml.querySelectorAll(`programme[channel="${id}"]`)];
-      for (const program of programs) {
-        const start = parseEPGDate(program.getAttribute('start'));
-        const stop = parseEPGDate(program.getAttribute('stop'));
-        if (stop < guideStart || start > guideEnd) continue;
-
-        const left = minutesBetween(guideStart, start) * pxPerMin;
-        const width = minutesBetween(start, stop) * pxPerMin;
-
-        const progDiv = document.createElement('div');
-        progDiv.className = 'program';
-        if (now >= start && now <= stop) progDiv.classList.add('now');
-        progDiv.style.width = width + 'px';
-        progDiv.style.marginLeft = left + 'px';
-        progDiv.textContent = program.querySelector('title')?.textContent || 'No Title';
-
-        row.appendChild(progDiv);
-      }
-
-      container.appendChild(row);
+    function parseEPGDate(raw) {
+      const match = raw.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})\s*([+\-]\d{4})?/);
+      if (!match) return new Date(NaN);
+      const [_, y, m, d, h, min, s, tz] = match;
+      const iso = `${y}-${m}-${d}T${h}:${min}:${s}${tz ? tz.slice(0, 3) + ":" + tz.slice(3) : "Z"}`;
+      return new Date(iso);
     }
 
-    updateTimeline();
-  }
+    async function loadEPG() {
+      const proxyUrl = "https://corsproxy.io/?";
+      const targetUrl = "https://epgnxb.vercel.app/api/epg.xml";
+      const response = await fetch(proxyUrl + encodeURIComponent(targetUrl));
+      const xmlText = await response.text();
+      const parser = new DOMParser();
+      const xmlDoc = parser.parseFromString(xmlText, "text/xml");
 
-  function updateTimeline() {
-    const now = new Date();
-    const guideStart = new Date(now.getTime() - 60 * 60 * 1000);
-    const pxPerMin = 2;
-    const mins = minutesBetween(guideStart, now);
-    timeline.style.left = (mins * pxPerMin + 100) + 'px'; // +100 for channel name width
-  }
+      const channels = xmlDoc.querySelectorAll("channel");
+      const programmes = xmlDoc.querySelectorAll("programme");
 
-  // Initial load
-  loadEPG();
-  setInterval(loadEPG, 60 * 60 * 1000); // refresh hourly
-  setInterval(updateTimeline, 60 * 1000); // update timeline every minute
-</script>
+      const channelMap = {};
+      channels.forEach(channel => {
+        const id = channel.getAttribute("id");
+        const name = channel.querySelector("display-name")?.textContent || "Unknown Channel";
+        channelMap[id] = { name, programs: [] };
+      });
 
+      epgProgramsTimeMap = [];
+
+      programmes.forEach(program => {
+        const channelId = program.getAttribute("channel");
+        const start = program.getAttribute("start");
+        const stop = program.getAttribute("stop");
+        const title = program.querySelector("title")?.textContent || "No Title";
+        const desc = program.querySelector("desc")?.textContent || "";
+
+        const startTime = parseEPGDate(start);
+        const stopTime = parseEPGDate(stop);
+        const duration = (stopTime - startTime) / 60000; // in minutes
+
+        if (channelMap[channelId]) {
+          channelMap[channelId].programs.push({ title, startTime, stopTime, desc, duration });
+        }
+      });
+
+      const container = document.getElementById("epgContainer");
+      container.innerHTML = "";
+
+      const grid = document.createElement("div");
+      grid.className = "epg-grid";
+
+      const now = new Date();
+
+      Object.values(channelMap).forEach(channel => {
+        const channelCol = document.createElement("div");
+        channelCol.className = "channel-name";
+        channelCol.textContent = channel.name;
+        grid.appendChild(channelCol);
+
+        const programRow = document.createElement("div");
+        programRow.className = "programs";
+
+        let currentOffset = 0;
+        const widthPerMinute = 4;
+
+        channel.programs.slice(0, 10).forEach(program => {
+          const progEl = document.createElement("div");
+          progEl.className = "program";
+          progEl.textContent = `${program.startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${program.title}`;
+
+          progEl.style.width = (program.duration * widthPerMinute) + 'px';
+
+          if (now >= program.startTime && now < program.stopTime) {
+            progEl.classList.add("now-playing");
+          }
+
+          epgProgramsTimeMap.push({
+            start: program.startTime,
+            stop: program.stopTime,
+            leftOffset: currentOffset
+          });
+
+          currentOffset += program.duration * widthPerMinute;
+          programRow.appendChild(progEl);
+        });
+
+        grid.appendChild(programRow);
+      });
+
+      container.appendChild(grid);
+      updateTimeLine();
+    }
+
+    function updateTimeLine() {
+      const timeline = document.getElementById("timeLine");
+      const now = new Date();
+
+      let totalLeft = 0;
+      let found = false;
+
+      for (let block of epgProgramsTimeMap) {
+        if (now >= block.start && now < block.stop) {
+          const totalDuration = (block.stop - block.start) / 60000;
+          const elapsed = (now - block.start) / 60000;
+          const offsetInBlock = elapsed * 4;
+          totalLeft = block.leftOffset + offsetInBlock;
+          found = true;
+          break;
+        }
+      }
+
+      if (found) {
+        timeline.style.left = (200 + totalLeft) + "px"; // 200 = channel name column
+        timeline.style.display = "block";
+      } else {
+        timeline.style.display = "none";
+      }
+    }
+
+    // Initial load
+    loadEPG();
+
+    // Auto refresh every hour
+    setInterval(loadEPG, 60 * 60 * 1000);
+
+    // Move the time line every minute
+    setInterval(updateTimeLine, 60 * 1000);
+  </script>
 </body>
 </html>
