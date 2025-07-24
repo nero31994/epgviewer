@@ -130,7 +130,8 @@
       channels.forEach(channel => {
         const id = channel.getAttribute("id");
         const name = channel.querySelector("display-name")?.textContent || "Unknown Channel";
-        channelMap[id] = { name, programs: [] };
+const logo = channel.querySelector("icon")?.getAttribute("src") || "";
+channelMap[id] = { name, logo, programs: [] };
       });
 
       epgProgramsTimeMap = [];
@@ -162,9 +163,17 @@
       Object.values(channelMap).forEach(channel => {
         const channelCol = document.createElement("div");
         channelCol.className = "channel-name";
-        const logo = document.createElement("img");
-logo.src = `https://your-logo-server.com/logos/${channel.name.trim().replace(/\s+/g, '_').toLowerCase()}.png`; // adjust pattern if needed
-logo.alt = channel.name;
+        if (channel.logo) {
+  const logoImg = document.createElement("img");
+  logoImg.src = channel.logo;
+  logoImg.alt = channel.name;
+  logoImg.loading = "lazy";
+  channelCol.appendChild(logoImg);
+}
+
+const nameSpan = document.createElement("span");
+nameSpan.textContent = channel.name;
+channelCol.appendChild(nameSpan);
 
 channelCol.appendChild(logo);
 const nameSpan = document.createElement("span");
