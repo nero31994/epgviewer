@@ -2,222 +2,177 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>EPG TV Guide</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TV Guide EPG</title>
   <style>
     body {
       margin: 0;
-      font-family: Arial, sans-serif;
-      background: #111;
+      font-family: sans-serif;
+      background-color: #111;
       color: #fff;
-    }
-
-    h1 {
-      text-align: center;
-      padding: 10px;
-      background: #222;
-      margin: 0;
-      font-size: 1.2rem;
     }
 
     .epg-container {
       overflow-x: auto;
-      overflow-y: auto;
-      height: calc(100vh - 60px);
+      overflow-y: hidden;
+      white-space: nowrap;
+      position: relative;
+      padding-top: 50px;
     }
 
-    .epg-grid {
-      display: grid;
-      grid-template-columns: 150px repeat(auto-fit, minmax(100px, 1fr));
-      min-width: 1000px;
+    .timeline {
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 100%;
+      width: 2px;
+      background: red;
+      z-index: 100;
+    }
+
+    .channel-row {
+      display: flex;
+      align-items: stretch;
+      margin-bottom: 5px;
+      height: 60px;
     }
 
     .channel-name {
+      width: 100px;
+      min-width: 100px;
       background: #222;
-      padding: 10px;
-      border-bottom: 1px solid #444;
-      position: sticky;
-      left: 0;
-      z-index: 2;
-      white-space: nowrap;
+      text-align: center;
+      padding: 5px;
+      border-right: 1px solid #333;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
     .program {
       background: #333;
+      margin-right: 1px;
       padding: 5px;
-      border: 1px solid #444;
-      font-size: 0.85rem;
+      font-size: 12px;
       overflow: hidden;
       white-space: nowrap;
       text-overflow: ellipsis;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      height: 100%;
     }
 
-    .now-playing {
-      background: #ff9800;
-      color: #000;
+    .now {
+      background-color: #ff5733;
+      color: #fff;
       font-weight: bold;
     }
 
-    .timeline {
-      position: sticky;
-      top: 0;
-      z-index: 3;
-      background: #1a1a1a;
-      display: flex;
-    }
-
-    .timeline .time-slot {
-      flex: 1;
-      text-align: center;
-      padding: 10px;
-      border-right: 1px solid #444;
-      font-size: 0.8rem;
-    }
-
-    .channel-row {
-      display: contents;
-    }
-
-    .current-time-indicator {
-      position: absolute;
-      top: 40px;
-      height: calc(100% - 40px);
-      width: 2px;
-      background: red;
-      z-index: 5;
-    }
-
-    @media (max-width: 600px) {
-      .epg-grid {
-        grid-template-columns: 100px repeat(auto-fit, minmax(80px, 1fr));
-        font-size: 0.75rem;
-      }
-
+    @media (max-width: 768px) {
       .channel-name {
-        padding: 5px;
+        font-size: 12px;
+        width: 80px;
+        min-width: 80px;
       }
 
       .program {
-        padding: 3px;
+        font-size: 11px;
       }
 
-      .timeline .time-slot {
-        padding: 5px;
+      .channel-row {
+        height: 50px;
       }
     }
   </style>
 </head>
 <body>
-  <h1>TV Guide EPG</h1>
-  <div class="epg-container">
-    <div id="epg" class="epg-grid"></div>
-    <div id="current-time-indicator" class="current-time-indicator"></div>
-  </div>
 
-  <script>
-    async function loadEPG() {
-      const response = await fetch('https://epgnxb.vercel.app/api/epg.xml');
-      const text = await response.text();
-      const parser = new DOMParser();
-      const xml = parser.parseFromString(text, 'application/xml');
+<div id="epg" class="epg-container">
+  <div id="timeline" class="timeline"></div>
+</div>
 
-      const channels = [...xml.querySelectorAll('channel')].map(channel => ({
-        id: channel.getAttribute('id'),
-        name: channel.querySelector('display-name')?.textContent || 'Unknown'
-      }));
+<script>
+  const epgUrl = 'https://epgnxb.vercel.app/api/epg.xml';
+  const container = document.getElementById('epg');
+  const timeline = document.getElementById('timeline');
 
-      const programs = [...xml.querySelectorAll('programme')].map(p => ({
-        channel: p.getAttribute('channel'),
-        start: parseEPGDate(p.getAttribute('start')),
-        stop: parseEPGDate(p.getAttribute('stop')),
-        title: p.querySelector('title')?.textContent || 'No title'
-      }));
+  function parseEPGDate(raw) {
+    const match = raw.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})\s*([+\-]\d{4})?/);
+    if (!match) return new Date(NaN);
+    const [_, y, m, d, h, min, s, tz] = match;
+    const iso = `${y}-${m}-${d}T${h}:${min}:${s}${tz ? tz.slice(0, 3) + ":" + tz.slice(3) : "Z"}`;
+    return new Date(iso);
+  }
 
-      const epg = document.getElementById('epg');
+  function minutesBetween(start, end) {
+    return (end - start) / (1000 * 60);
+  }
 
-      const earliest = Math.min(...programs.map(p => p.start.getTime()));
-      const latest = Math.max(...programs.map(p => p.stop.getTime()));
-      const duration = latest - earliest;
+  async function loadEPG() {
+    container.innerHTML = '<div id="timeline" class="timeline"></div>'; // reset
+    const res = await fetch(epgUrl);
+    const xmlText = await res.text();
+    const parser = new DOMParser();
+    const xml = parser.parseFromString(xmlText, 'text/xml');
 
-      // Timeline
-      const timelineRow = document.createElement('div');
-      timelineRow.className = 'timeline';
-      const timeInterval = 30 * 60 * 1000; // 30 minutes
+    const now = new Date();
+    const guideStart = new Date(now.getTime() - 60 * 60 * 1000); // 1 hour before
+    const guideEnd = new Date(now.getTime() + 3 * 60 * 60 * 1000); // 3 hours after
+    const guideDuration = minutesBetween(guideStart, guideEnd);
+    const pxPerMin = 2; // scaling
 
-      for (let t = earliest; t < latest; t += timeInterval) {
-        const timeSlot = document.createElement('div');
-        timeSlot.className = 'time-slot';
-        timeSlot.textContent = new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        timelineRow.appendChild(timeSlot);
-      }
-      epg.appendChild(timelineRow);
+    const channels = [...xml.querySelectorAll('channel')];
+    for (const channel of channels) {
+      const id = channel.getAttribute('id');
+      const name = channel.querySelector('display-name')?.textContent || id;
+      const row = document.createElement('div');
+      row.className = 'channel-row';
 
-      // Channel rows
-      channels.forEach(channel => {
-        const row = document.createElement('div');
-        row.className = 'channel-row';
+      const nameDiv = document.createElement('div');
+      nameDiv.className = 'channel-name';
+      nameDiv.textContent = name;
+      row.appendChild(nameDiv);
 
-        const channelCell = document.createElement('div');
-        channelCell.className = 'channel-name';
-        channelCell.textContent = channel.name;
-        row.appendChild(channelCell);
+      const programs = [...xml.querySelectorAll(`programme[channel="${id}"]`)];
+      for (const program of programs) {
+        const start = parseEPGDate(program.getAttribute('start'));
+        const stop = parseEPGDate(program.getAttribute('stop'));
+        if (stop < guideStart || start > guideEnd) continue;
 
-        const channelPrograms = programs
-          .filter(p => p.channel === channel.id)
-          .sort((a, b) => a.start - b.start);
+        const left = minutesBetween(guideStart, start) * pxPerMin;
+        const width = minutesBetween(start, stop) * pxPerMin;
 
-        channelPrograms.forEach(p => {
-          const cell = document.createElement('div');
-          cell.className = 'program';
+        const progDiv = document.createElement('div');
+        progDiv.className = 'program';
+        if (now >= start && now <= stop) progDiv.classList.add('now');
+        progDiv.style.width = width + 'px';
+        progDiv.style.marginLeft = left + 'px';
+        progDiv.textContent = program.querySelector('title')?.textContent || 'No Title';
 
-          const widthPercent = ((p.stop - p.start) / duration) * 100 * 2; // stretch
-          cell.style.width = `${widthPercent}%`;
-          cell.textContent = `${p.title}`;
-
-          const now = new Date();
-          if (now >= p.start && now <= p.stop) {
-            cell.classList.add('now-playing');
-          }
-
-          row.appendChild(cell);
-        });
-
-        epg.appendChild(row);
-      });
-
-      updateTimeIndicator(earliest, latest);
-      setInterval(() => updateTimeIndicator(earliest, latest), 60000);
-    }
-
-    function parseEPGDate(raw) {
-      const match = raw.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})\s*([+\-]\d{4})?/);
-      if (!match) return new Date(NaN);
-      const [_, y, m, d, h, min, s, tz] = match;
-      const iso = `${y}-${m}-${d}T${h}:${min}:${s}${tz ? tz.slice(0, 3) + ":" + tz.slice(3) : "Z"}`;
-      return new Date(iso);
-    }
-
-    function updateTimeIndicator(startTime, endTime) {
-      const now = Date.now();
-      const duration = endTime - startTime;
-      const elapsed = now - startTime;
-
-      const epgGrid = document.querySelector('.epg-grid');
-      const indicator = document.getElementById('current-time-indicator');
-
-      if (now < startTime || now > endTime) {
-        indicator.style.display = 'none';
-        return;
+        row.appendChild(progDiv);
       }
 
-      indicator.style.display = 'block';
-      const containerWidth = epgGrid.scrollWidth;
-      const left = (elapsed / duration) * containerWidth;
-      indicator.style.left = `${left}px`;
+      container.appendChild(row);
     }
 
-    loadEPG();
-    setInterval(loadEPG, 60 * 60 * 1000); // Refresh every hour
-  </script>
+    updateTimeline();
+  }
+
+  function updateTimeline() {
+    const now = new Date();
+    const guideStart = new Date(now.getTime() - 60 * 60 * 1000);
+    const pxPerMin = 2;
+    const mins = minutesBetween(guideStart, now);
+    timeline.style.left = (mins * pxPerMin + 100) + 'px'; // +100 for channel name width
+  }
+
+  // Initial load
+  loadEPG();
+  setInterval(loadEPG, 60 * 60 * 1000); // refresh hourly
+  setInterval(updateTimeline, 60 * 1000); // update timeline every minute
+</script>
+
 </body>
 </html>
